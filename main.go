@@ -3,8 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"go.uber.org/zap"
-	"gopkg.in/yaml.v2"
 	"html/template"
 	"io"
 	"log"
@@ -12,7 +10,19 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	"gopkg.in/yaml.v2"
 )
+
+type EndpointWorkingOrNot struct {
+	ID         int
+	URL        string
+	StatusCode int
+}
+
+type PageDataWorkingOrNot struct {
+	EndpointsWorkingOrN []EndpointWorkingOrNot
+}
 
 type Endpoint struct {
 	ID   string
@@ -48,47 +58,50 @@ func readConfigFile() []string {
 }
 
 func checkIfWorking(w http.ResponseWriter, r *http.Request) {
-	logger := zap.Must(zap.NewProduction())
-
 	var wg sync.WaitGroup
-	wg.Add(1)
+	var WorkingEP []EndpointWorkingOrNot
+	var mu sync.Mutex
 
 	var urls []string
 	urls = readConfigFile()
 
-	go func() {
-		defer wg.Done()
+	for i, url := range urls {
+		wg.Add(1)
 
-		io.WriteString(w, "Making calls to the apis :)")
+		go func(url string, index int) {
+			defer wg.Done()
 
-		for i := 0; i <= len(urls)-1; i++ {
-			response, err := http.Get(urls[i])
+			response, err := http.Get(url)
 			if err != nil {
-				panic(err)
+				log.Printf("Error when obtaining response -> %s", err)
+				return
 			}
+			defer response.Body.Close()
 
-			responseUrl := string(response.Request.URL.String())
-			if response.StatusCode == 200 {
-				logger.Info("Successfully fetched data ✅",
-					zap.String("URL ", responseUrl),
-				)
+			statusCode := response.StatusCode
+
+			endPointWorkingOrN := EndpointWorkingOrNot{
+				ID:         i,
+				URL:        url,
+				StatusCode: statusCode,
 			}
-			if response.StatusCode == 500 {
-				logger.Info("Backend issue, Api not working 🚫",
-					zap.String("URL ", responseUrl))
-				continue
-			}
-		}
-		logger.Info("Finished 😬, leaving now.")
-		os.Exit(0)
-	}()
+			mu.Lock()
+			WorkingEP = append(WorkingEP, endPointWorkingOrN)
+			mu.Unlock()
+		}(url, i)
+	}
 	wg.Wait()
+	tmpl := template.Must(template.ParseFiles("templates/working.html"))
+	pageDataWorkingOrNot := PageDataWorkingOrNot{
+		EndpointsWorkingOrN: WorkingEP,
+	}
+	tmpl.Execute(w, pageDataWorkingOrNot)
 }
 
 func checkData(w http.ResponseWriter, r *http.Request) {
 	var wg sync.WaitGroup
 	var endpoints []Endpoint
-	var mu sync.Mutex // Mutex to protect endpoints slice
+	var mu sync.Mutex
 
 	var urls []string
 	urls = readConfigFile()
@@ -150,7 +163,7 @@ func getEndpointName(url string) string {
 
 func main() {
 	http.HandleFunc("/", checkIfWorking)
-	//http.HandleFunc("/get", checkData)
+	http.HandleFunc("/get", checkData)
 
 	fmt.Println("Server starting on :8080...")
 	err := http.ListenAndServe(":8080", nil)
