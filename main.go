@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -39,22 +40,68 @@ type ConfigFile struct {
 	APIs []string `yaml:"apis"`
 }
 
-func readConfigFile() []string {
-	bytes, err := os.ReadFile("config.yaml")
+func getConfigFilePath() string {
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		log.Fatalf("Error reading config.yaml -> %s", err)
+		log.Fatalf("Error obtaining home directory -> %s", err)
+	}
+
+	configDir := filepath.Join(homeDir, ".goApig")
+	configFilePath := filepath.Join(configDir, "config.yaml")
+	return configFilePath
+}
+
+func createDefaultConfigFile() {
+	configFilePath := getConfigFilePath()
+
+	if _, err := os.Stat(configFilePath); os.IsNotExist(err) {
+		configDir := filepath.Dir(configFilePath)
+		if err := os.MkdirAll(configDir, 0755); err != nil {
+			log.Fatalf("Error creating directory -> %s", err)
+		}
+
+		defaultConfig := ConfigFile{
+			APIs: []string{
+				"https://github.com/sponkurtus2/goAPIG",
+				"https://jsonplaceholder.typicode.com/posts",
+			},
+		}
+
+		if err := generateYAMLFile(configFilePath, defaultConfig); err != nil {
+			log.Fatalf("Error creating config file -> %s", err)
+		}
+
+		log.Printf("Config file created at -> %s", configFilePath)
+	}
+}
+
+func generateYAMLFile(filePath string, data interface{}) error {
+	yamlData, err := yaml.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("error marshaling data to YAML: %v", err)
+	}
+
+	if err := os.WriteFile(filePath, yamlData, 0644); err != nil {
+		return fmt.Errorf("error writing YAML file: %v", err)
+	}
+
+	return nil
+}
+
+func readConfigFile() []string {
+	configFilePath := getConfigFilePath()
+
+	bytes, err := os.ReadFile(configFilePath)
+	if err != nil {
+		log.Fatalf("Error reading config file -> %s", err)
 	}
 
 	var config ConfigFile
 	if err := yaml.Unmarshal(bytes, &config); err != nil {
-		log.Fatalf("Error when Unmarshal -> %s", err)
+		log.Fatalf("Error unmarshaling YAML -> %s", err)
 	}
 
-	var apis []string
-	for _, api := range config.APIs {
-		apis = append(apis, api)
-	}
-	return apis
+	return config.APIs
 }
 
 func checkIfWorking(w http.ResponseWriter, r *http.Request) {
@@ -62,8 +109,7 @@ func checkIfWorking(w http.ResponseWriter, r *http.Request) {
 	var WorkingEP []EndpointWorkingOrNot
 	var mu sync.Mutex
 
-	var urls []string
-	urls = readConfigFile()
+	urls := readConfigFile()
 
 	for i, url := range urls {
 		wg.Add(1)
@@ -81,7 +127,7 @@ func checkIfWorking(w http.ResponseWriter, r *http.Request) {
 			statusCode := response.StatusCode
 
 			endPointWorkingOrN := EndpointWorkingOrNot{
-				ID:         i,
+				ID:         index,
 				URL:        url,
 				StatusCode: statusCode,
 			}
@@ -91,6 +137,7 @@ func checkIfWorking(w http.ResponseWriter, r *http.Request) {
 		}(url, i)
 	}
 	wg.Wait()
+
 	tmpl := template.Must(template.ParseFiles("templates/working.html"))
 	pageDataWorkingOrNot := PageDataWorkingOrNot{
 		EndpointsWorkingOrN: WorkingEP,
@@ -103,8 +150,7 @@ func checkData(w http.ResponseWriter, r *http.Request) {
 	var endpoints []Endpoint
 	var mu sync.Mutex
 
-	var urls []string
-	urls = readConfigFile()
+	urls := readConfigFile()
 
 	for i, url := range urls {
 		wg.Add(1)
@@ -162,12 +208,13 @@ func getEndpointName(url string) string {
 }
 
 func main() {
+	createDefaultConfigFile()
+
 	http.HandleFunc("/", checkIfWorking)
 	http.HandleFunc("/get", checkData)
 
 	fmt.Println("Server starting on :8080...")
-	err := http.ListenAndServe(":8080", nil)
-	if err != nil {
-		panic(err)
+	if err := http.ListenAndServe(":8080", nil); err != nil {
+		log.Fatalf("Error starting server -> %s", err)
 	}
 }
