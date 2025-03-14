@@ -25,7 +25,7 @@ goAPIG is a lightweight Golang tool designed to simplify the process of testing 
 4. ./goAPIG
 
 ### Installing from go packages
-
+go get sponkurtus2/goAPIG/tree/v0.1.0
 
 ## Configuration
 
