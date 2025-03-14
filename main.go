@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -14,6 +15,9 @@ import (
 
 	"gopkg.in/yaml.v2"
 )
+
+//go:embed templates/*
+var content embed.FS
 
 type EndpointWorkingOrNot struct {
 	ID         int
@@ -138,7 +142,7 @@ func checkIfWorking(w http.ResponseWriter, r *http.Request) {
 	}
 	wg.Wait()
 
-	tmpl := template.Must(template.ParseFiles("templates/working.html"))
+	tmpl := template.Must(template.ParseFS(content, "templates/working.html"))
 	pageDataWorkingOrNot := PageDataWorkingOrNot{
 		EndpointsWorkingOrN: WorkingEP,
 	}
@@ -191,7 +195,7 @@ func checkData(w http.ResponseWriter, r *http.Request) {
 
 	wg.Wait()
 
-	tmpl := template.Must(template.ParseFiles("templates/index.html"))
+	tmpl := template.Must(template.ParseFS(content, "templates/index.html"))
 	pageData := PageData{
 		Endpoints: endpoints,
 	}
