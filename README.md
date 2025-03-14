@@ -24,9 +24,6 @@ goAPIG is a lightweight Golang tool designed to simplify the process of testing 
 3. go build
 4. ./goAPIG
 
-### Installing from go packages
-go get sponkurtus2/goAPIG/tree/v0.1.0
-
 ## Configuration
 
 goAPIG uses a config.yaml file to manage the list of APIs you want to test, the config.yaml will be initialized once you run the program for the first time in ~/.goApig/. Here’s an example configuration:
